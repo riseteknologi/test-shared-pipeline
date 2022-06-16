@@ -1,0 +1,68 @@
+name: shared-pipeline
+
+on:
+  workflow_call:
+    inputs:
+      pipeline:
+        type: string
+        description: what pipeline type you need to run, available [CI, CD]
+        default: CI
+        required: false
+      registry:
+        type: string
+        description: what repository used to store the image from this build pipeline
+        required: true
+      project-id:
+        type: string
+        description: gcp project id where the repository located
+        required: true
+      repository:
+        type: string
+        description: which repository within registry being used
+        required: true
+      app-name:
+        type: string
+        description: name of the apps
+        required: true
+    secrets:
+      GOOGLE_CREDENTIALS:
+        required: true
+
+env:
+  IMAGE_PATH: ${{ inputs.registry }}/${{ inputs.project-id }}/${{ inputs.repository }}/${{ inputs.app-name }}
+
+jobs:
+
+  build-and-push:
+    if: ${{ inputs.pipeline }} == 'CI'
+    runs-on: [self-hosted, rise-shared-runner-ci]
+    steps:
+      - uses: actions/checkout@v3
+      - name: setup gcloud sdk
+        uses: google-github-actions/setup-gcloud@v0
+      - uses: docker/metadata-action@v4
+        id: metadata
+        with:
+          images: ${{ env.IMAGE_PATH }}
+      - name: setup docker context for buildx
+        id: buildx-context
+        run: docker context create builders
+      - name: setup docker buildx
+        uses: docker/setup-buildx-action@v2
+        with:
+          endpoint: builders
+      - name: login and configure docker credentials
+        uses: docker/login-action@v2
+        with:
+          registry: ${{ inputs.registry }}
+          username: _json_key
+          password: ${{ secrets.GOOGLE_CREDENTIALS }}
+      - name: build and push image
+        uses: docker/build-push-action@v3
+        with:
+          context: .
+          push: true
+          tags: ${{ steps.metadata.outputs.tags }}
+          labels: ${{ steps.metadata.outputs.labels }}
+          cache-from: type=registry,ref=${{ env.IMAGE_PATH }}:buildcache
+          cache-to: type=registry,ref=${{ env.IMAGE_PATH }}:buildcache,mode=max
