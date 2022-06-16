@@ -44,6 +44,11 @@ jobs:
         id: metadata
         with:
           images: ${{ env.IMAGE_PATH }}
+          tags: |
+              type=sha
+              type=ref,event=branch
+              type=ref,event=tag
+              type=ref,event=pr
       - name: setup docker context for buildx
         id: buildx-context
         run: docker context create builders
